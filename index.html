@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="shortcut icon" href="favicon.ico"/>
+<title>Stage Music Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #16161e;
+    --surface2: #1e1e2a;
+    --border: rgba(255,255,255,0.07);
+    --text: #e8e6f0;
+    --text-dim: #6b6880;
+    --panic: #ff3b5c;
+    --panic-glow: rgba(255,59,92,0.4);
+  }
+
+  html, body {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── PRELOAD OVERLAY ── */
+  #preloader {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 32px;
+    transition: opacity 0.5s ease;
+  }
+
+  #preloader.hiding {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .preloader-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(1.4rem, 4vw, 2.2rem);
+    color: #fff;
+    letter-spacing: -0.02em;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .preloader-sub {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .preloader-tracks {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .preload-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .preload-name {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    width: 140px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .preload-bar-wrap {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .preload-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 2px;
+    background: #f0d060;
+    transition: width 0.15s ease;
+  }
+
+  .preload-status {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .preload-status.done   { color: #3ddc84; }
+  .preload-status.error  { color: var(--panic); }
+  .preload-status.skip   { color: var(--text-dim); }
+
+  .preloader-overall {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .preloader-overall-bar {
+    width: 100%;
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+
+  .preloader-overall-fill {
+    height: 100%;
+    width: 0%;
+    background: #f0d060;
+    border-radius: 1px;
+    transition: width 0.2s ease;
+  }
+
+  .preloader-msg {
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .preloader-enter-btn {
+    display: none;
+    background: #f0d060;
+    color: #0f0f13;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 40px;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 0 28px rgba(240,208,96,0.35);
+  }
+
+  .preloader-enter-btn:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 40px rgba(240,208,96,0.55);
+  }
+
+  .preloader-enter-btn:active { transform: scale(0.97); }
+
+  /* Cache status pill in header */
+  .cache-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 20px;
+    margin-top: 8px;
+    border: 1px solid transparent;
+  }
+
+  .cache-pill.cached {
+    color: #3ddc84;
+    border-color: rgba(61,220,132,0.25);
+    background: rgba(61,220,132,0.07);
+  }
+
+  .cache-pill.demo {
+    color: var(--text-dim);
+    border-color: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03);
+  }
+
+  .cache-pill.partial {
+    color: #f0d060;
+    border-color: rgba(240,208,96,0.25);
+    background: rgba(240,208,96,0.07);
+  }
+
+  .cache-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* Per-card cache indicator */
+  .card-cache-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .card-cache-dot.cached  { background: #3ddc84; }
+  .card-cache-dot.error   { background: var(--panic); }
+  .card-cache-dot.loading { background: #f0d060; animation: breathe 1s ease-in-out infinite; }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-left h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    color: #fff;
+  }
+
+  .header-left .subtitle {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  /* PANIC BUTTON */
+  .panic-btn {
+    flex-shrink: 0;
+    background: transparent;
+    border: 2px solid var(--panic);
+    color: var(--panic);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .panic-btn:hover {
+    background: var(--panic);
+    color: #fff;
+    box-shadow: 0 0 24px var(--panic-glow);
+  }
+
+  .panic-btn:active {
+    transform: scale(0.96);
+  }
+
+  .panic-btn.firing {
+    background: var(--panic);
+    color: #fff;
+    box-shadow: 0 0 40px var(--panic-glow);
+    animation: panicPulse 0.3s ease;
+  }
+
+  @keyframes panicPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+
+  /* STATUS BAR */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #3ddc84;
+    animation: breathe 2s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .active-count {
+    margin-left: auto;
+    color: #3ddc84;
+    font-weight: 700;
+  }
+
+  /* TRACKS GRID */
+  .tracks {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  /* TRACK / DUET CARD */
+  .track-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: border-color 0.3s ease;
+  }
+
+  .track-card.playing {
+    border-color: rgba(255, 255, 255, 0.85);
+  }
+
+  /* Track label column */
+  .track-label {
+    flex: 0 0 auto;
+    width: 160px;
+  }
+
+  .track-top-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .track-number {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .track-name {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    color: #fff;
+  }
+  
+  .track-description {
+      margin-top: -16px;
+      color: #696782;
+  }
+
+  .track-card.disabled {
+      
+  }
+  
+  .track-card.disabled .track-name {
+      color: var(--text-dim);
+  }
+  .track-card.disabled .track-description {
+      color: var(--text-dim);
+  }
+  .track-card.disabled .pad {
+      background: var(--surface) !important;
+      filter: none !important;
+  }
+
+  /* LOOP TOGGLE */
+  .loop-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    margin-top: 5px;
+  }
+
+  .loop-toggle input[type="checkbox"] { display: none; }
+
+  .loop-box {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+
+  .loop-box svg {
+    width: 10px; height: 10px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    stroke: #4ecdc4; fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  .loop-toggle input:checked ~ .loop-box {
+    border-color: #4ecdc4;
+    background: rgba(78,205,196,0.14);
+  }
+
+  .loop-toggle input:checked ~ .loop-box svg { opacity: 1; }
+
+  .loop-text {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: color 0.15s;
+  }
+
+  .loop-toggle:has(input:checked) .loop-text { color: #4ecdc4; }
+  .loop-toggle:hover .loop-box { border-color: rgba(255,255,255,0.35); }
+
+  /* VU / activity indicator — now inside gain-wrap */
+  .track-vu {
+    display: flex;
+    flex-direction: row;
+    gap: 3px;
+    align-items: center;
+    height: 10px;
+    transition: opacity 0.3s ease;
+  }
+
+
+
+  .vu-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: currentColor;
+    transform-origin: bottom;
+    animation: vuAnim 0.6s ease-in-out infinite alternate;
+  }
+  .vu-bar:nth-child(1) { height: 6px; animation-delay: 0s; }
+  .vu-bar:nth-child(2) { height: 10px; animation-delay: 0.15s; }
+  .vu-bar:nth-child(3) { height: 7px; animation-delay: 0.3s; }
+
+  @keyframes vuAnim {
+    from { transform: scaleY(0.3); opacity: 0.5; }
+    to { transform: scaleY(1); opacity: 1; }
+  }
+
+  /* GAIN SLIDER */
+  .gain-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    min-width: 80px;
+    max-width: 160px;
+    padding-top: 22px;
+    padding-bottom: 22px;
+  }
+
+  .gain-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .gain-label {
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .gain-value {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #f0d060;
+    letter-spacing: 0.05em;
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* Custom range slider */
+  .gain-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    background: linear-gradient(
+      to right,
+      #3b3218 0%,
+      #f0d060 var(--fill),
+      rgba(255,255,255,0.1) var(--fill),
+      rgba(255,255,255,0.1) 100%
+    );
+    --fill: 75%;
+  }
+
+  .gain-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #f0d060;
+    box-shadow: 0 0 8px rgba(240,208,96,0.6);
+    cursor: grab;
+    transition: box-shadow 0.15s, transform 0.1s;
+  }
+
+  .gain-slider::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.2);
+    box-shadow: 0 0 16px rgba(240,208,96,0.9);
+  }
+
+  .gain-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: #f0d060;
+    box-shadow: 0 0 8px rgba(240,208,96,0.6);
+    cursor: grab;
+  }
+
+  /* Mobile: slider goes below label row */
+  @media (max-width: 599px) {
+    .gain-wrap {
+      max-width: none;
+      width: 100%;
+    }
+    .track-vu { display: none; }
+  }
+
+  /* Pads container */
+  .pads-wrap {
+    display: flex;
+    gap: 12px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  /* PAD */
+  .pad {
+    flex: 1;
+    max-width: 200px;
+    min-width: 100px;
+    aspect-ratio: 1.4 / 1;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: transform 0.1s ease, box-shadow 0.2s ease, filter 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .pad::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background 0.15s ease;
+    border-radius: inherit;
+  }
+
+  .pad:active::before,
+  .pad.pressed::before {
+    background: rgba(255,255,255,0.18);
+  }
+
+  .pad:active, .pad.pressed {
+    transform: scale(0.94);
+  }
+
+  .pad-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
+  .pad-label {
+    color: rgba(0,0,0,0.55);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* Play pad — slightly brighter top edge (shine) */
+  .pad-play {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 4px 16px rgba(0,0,0,0.4);
+  }
+
+  .pad-play.active {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 0 20px var(--pad-glow), 0 4px 16px rgba(0,0,0,0.4);
+    animation: padPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes padPulse {
+    0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 0 16px var(--pad-glow), 0 4px 16px rgba(0,0,0,0.4); }
+    50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 0 30px var(--pad-glow), 0 4px 16px rgba(0,0,0,0.4); }
+  }
+
+  /* Stop pad */
+  .pad-stop {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 16px rgba(0,0,0,0.4);
+    filter: brightness(0.7) saturate(0.6);
+  }
+
+  .pad-stop:hover {
+    filter: brightness(0.85) saturate(0.8);
+  }
+
+  .pad-stop.active {
+    filter: brightness(1) saturate(1);
+    animation: fadeOutPulse 1s ease-in-out;
+  }
+
+  @keyframes fadeOutPulse {
+    0% { filter: brightness(1.2) saturate(1.2); }
+    100% { filter: brightness(0.7) saturate(0.6); }
+  }
+
+  /* Divider between play/stop */
+  .pad-divider {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 40px;
+    background: var(--border);
+    align-self: center;
+  }
+
+  /* Progress ring on play pad */
+  .pad-progress {
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 3px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 2px;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .pad.active .pad-progress { opacity: 1; }
+
+  .pad-progress-fill {
+    height: 100%;
+    background: rgba(255,255,255,0.6);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+  }
+
+  /* FADE STATE BADGE */
+  .fade-badge {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    font-size: 0.5rem;
+    letter-spacing: 0.06em;
+    background: rgba(0,0,0,0.25);
+    color: rgba(0,0,0,0.6);
+    padding: 1px 4px;
+    border-radius: 3px;
+    display: none;
+  }
+
+  .pad.fading .fade-badge { display: block; }
+
+  /* TABLET */
+  @media (min-width: 600px) {
+    .tracks { gap: 14px; }
+    .pad { font-size: 0.65rem; }
+  }
+
+  /* MOBILE — 2 pads per row, stacked cards */
+  @media (max-width: 599px) {
+    .track-card {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .track-label {
+      width: 100%;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .track-number { margin-bottom: 0; }
+
+    .pads-wrap {
+      justify-content: stretch;
+    }
+
+    .pad {
+      max-width: none;
+      aspect-ratio: 2.2 / 1;
+    }
+
+    .pad-divider { display: none; }
+
+    .track-vu { display: none; }
+  }
+
+  /* Tablet layout — 4 items (label + vu + play + stop) in row */
+  @media (min-width: 600px) and (max-width: 899px) {
+    .track-label { width: 130px; }
+    .pad { aspect-ratio: 1.2 / 1; }
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  .fade-info {
+    display: flex;
+    gap: 20px;
+  }
+
+  .fade-info span { display: flex; align-items: center; gap: 6px; }
+  .fade-info span::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.5;
+  }
+
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(30,30,42,0.95);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #fff;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    padding: 10px 20px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    pointer-events: none;
+    z-index: 100;
+    white-space: nowrap;
+    backdrop-filter: blur(12px);
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<!-- PRELOAD OVERLAY -->
+<div id="preloader">
+  <div>
+    <div class="preloader-title">Stage Music Controller</div>
+    <div class="preloader-sub" id="preloaderSub">Loading audio into memory…</div>
+  </div>
+  <div class="preloader-tracks" id="preloaderTracks"></div>
+  <div class="preloader-overall">
+    <div class="preloader-overall-bar"><div class="preloader-overall-fill" id="overallFill"></div></div>
+    <div class="preloader-msg" id="preloaderMsg">Preparing…</div>
+  </div>
+  <button class="preloader-enter-btn" id="enterBtn" onclick="enterApp()">Enter →</button>
+</div>
+
+<div class="app">
+  <header>
+    <div class="header-left">
+      <h1>Stage Music Controller</h1>
+      <div class="subtitle">Live Performance · Intermission Audio</div>
+      <div class="cache-pill demo" id="cachePill"><span class="cache-dot"></span><span id="cachePillText">Demo mode</span></div>
+    </div>
+    <button class="panic-btn" id="panicBtn" onclick="panicStop()">⬛ PANIC</button>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span>System ready</span>
+    <span class="active-count" id="activeCount">0 playing</span>
+  </div>
+
+  <div class="tracks" id="tracksContainer"></div>
+
+  <footer>
+    <div class="fade-info">
+      <span style="color:#8ecf9c">▶ PLAY — fade in</span>
+      <span style="color:#cf8e8e">■ STOP — fade out</span>
+    </div>
+    <div id="fadeTimings"></div>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  INIT — Edit everything here
+// ─────────────────────────────────────────────
+const CONFIG = {
+  fadeInDuration:  4.0,   // seconds to fade in
+  fadeOutDuration: 5.0,   // seconds to fade out
+  fadeStep:        50,    // ms between volume steps (lower = smoother)
+
+    tracks: [
+        {
+            name: "Before Act 1",
+            description: "Opening night warmup",
+            // url: "audio/track1.mp3",   ← replace with real paths
+            url: "00-intro.mp3",  // demo mode — set to audio file path to use
+            color: { h: 155, s: 55, l: 72 },  // pastel green
+        },
+        {
+            name: "Before Act 2",
+            description: "After first intermission",
+            url: null,
+            color: { h: 200, s: 55, l: 72 },  // pastel blue
+        },
+        {
+            name: "Before Act 3",
+            description: "Evening energy",
+            url: null,
+            color: { h: 45, s: 65, l: 75 },   // pastel amber
+        },
+        {
+            name: "Before Act 4",
+            description: "Mid-show break",
+            url: null,
+            color: { h: 270, s: 45, l: 78 },  // pastel lavender
+        },
+        {
+            name: "Before Act 5",
+            description: "Late show mood",
+            url: null,
+            color: { h: 10, s: 60, l: 76 },   // pastel coral
+        },
+        {
+            name: "Before Act 6",
+            description: "Calm interlude",
+            url: null,
+            color: { h: 175, s: 50, l: 72 },  // pastel teal
+        },
+        {
+            name: "Before Act 7",
+            description: "Building energy",
+            url: null,
+            color: { h: 30, s: 60, l: 76 },   // pastel peach
+        },
+        {
+            name: "Before Act 8",
+            description: "Pre-finale atmosphere",
+            url: null,
+            color: { h: 320, s: 45, l: 78 },  // pastel pink
+        },
+        {
+            name: "Before Act 9",
+            description: "Grand finale intro",
+            url: null,
+            color: { h: 230, s: 50, l: 76 },  // pastel periwinkle
+        },
+    ]
+};
+
+// ─────────────────────────────────────────────
+//  Audio Engine
+// ─────────────────────────────────────────────
+class AudioTrack {
+  constructor(config, index) {
+    this.config    = config;
+    this.index     = index;
+    this.audio     = null;
+    this.fadePct   = 0;
+    this.gain      = 0.75;
+    this.loop      = true;   // default: looping on
+    this.target    = 0;
+    this.fadeTimer = null;
+    this.isPlaying = false;
+    this.isFading  = false;
+
+    if (config.url) {
+      this.audio = new Audio(config.url);
+      this.audio.loop = true;
+      this.audio.volume = 0;
+      // When non-looping track reaches end, clean up state
+      this.audio.addEventListener('ended', () => {
+        if (!this.loop) {
+          clearInterval(this.fadeTimer);
+          this.fadePct   = 0;
+          this.isPlaying = false;
+          this.isFading  = false;
+          updateCardState(this.index, false);
+          setPadActive(this.index, 'play', false);
+          setPadActive(this.index, 'stop', false);
+          setFadeBadge(this.index, null);
+          updatePadProgress(this.index, 0, 'play');
+        }
+      });
+    }
+  }
+
+  setLoop(val) {
+    this.loop = val;
+    if (this.audio) this.audio.loop = val;
+  }
+
+  // Actual audio volume = fadePct * gain
+  applyVolume() {
+    if (this.audio) this.audio.volume = Math.min(1, this.fadePct * this.gain);
+  }
+
+  setGain(g) {
+    this.gain = g;
+    this.applyVolume();
+  }
+
+  fadeIn() {
+    if (this.isFading && this.target === 1) return;
+    clearInterval(this.fadeTimer);
+
+    if (this.audio) {
+      if (!this.isPlaying) {
+        this.audio.currentTime = 0;
+        this.audio.play().catch(e => showToast("⚠ Audio blocked — tap again"));
+      }
+    }
+
+    this.isPlaying = true;
+    this.isFading  = true;
+    this.target    = 1;
+
+    const steps = CONFIG.fadeInDuration * 1000 / CONFIG.fadeStep;
+    const delta = (1 - this.fadePct) / steps;
+
+    this.fadeTimer = setInterval(() => {
+      this.fadePct = Math.min(1, this.fadePct + delta);
+      this.applyVolume();
+      updatePadProgress(this.index, this.fadePct, 'play');
+      if (this.fadePct >= 1) {
+        clearInterval(this.fadeTimer);
+        this.isFading = false;
+        this.fadePct  = 1;
+        setFadeBadge(this.index, null);
+        updateCardState(this.index, true);
+      }
+    }, CONFIG.fadeStep);
+
+    updateCardState(this.index, true);
+    setFadeBadge(this.index, 'in');
+  }
+
+  fadeOut() {
+    if (!this.isPlaying) return;
+    if (this.isFading && this.target === 0) return;
+    clearInterval(this.fadeTimer);
+
+    this.isFading = true;
+    this.target   = 0;
+
+    const steps = CONFIG.fadeOutDuration * 1000 / CONFIG.fadeStep;
+    const delta = this.fadePct / steps;
+
+    this.fadeTimer = setInterval(() => {
+      this.fadePct = Math.max(0, this.fadePct - delta);
+      this.applyVolume();
+      updatePadProgress(this.index, this.fadePct, 'stop');
+      if (this.fadePct <= 0) {
+        clearInterval(this.fadeTimer);
+        if (this.audio) { this.audio.pause(); this.audio.currentTime = 0; }
+        this.isPlaying = false;
+        this.isFading  = false;
+        this.fadePct   = 0;
+        setFadeBadge(this.index, null);
+        updateCardState(this.index, false);
+        setPadActive(this.index, 'play', false);
+        setPadActive(this.index, 'stop', false);
+      }
+    }, CONFIG.fadeStep);
+
+    setFadeBadge(this.index, 'out');
+    setPadActive(this.index, 'stop', true);
+  }
+
+  stop() {
+    clearInterval(this.fadeTimer);
+    this.fadePct   = 0;
+    this.target    = 0;
+    this.isPlaying = false;
+    this.isFading  = false;
+    if (this.audio) { this.audio.pause(); this.audio.volume = 0; this.audio.currentTime = 0; }
+    updateCardState(this.index, false);
+    setPadActive(this.index, 'play', false);
+    setPadActive(this.index, 'stop', false);
+    setFadeBadge(this.index, null);
+    // Reset gain slider visual
+    const slider = document.getElementById(`gain-${this.index}`);
+    if (slider) updateGainSliderFill(slider);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Build UI
+// ─────────────────────────────────────────────
+const tracks = CONFIG.tracks.map((t, i) => new AudioTrack(t, i));
+
+function hsl(h, s, l, a = 1) {
+  return `hsla(${h},${s}%,${l}%,${a})`;
+}
+
+function buildUI() {
+  const container = document.getElementById('tracksContainer');
+
+  CONFIG.tracks.forEach((t, i) => {
+    const c = t.color;
+    // Slightly darker/desaturated for stop pad
+    const playBg  = hsl(c.h, c.s, c.l);
+    const stopBg  = hsl(c.h, c.s - 15, c.l - 12);
+    const vuColor = hsl(c.h, c.s, c.l + 10);
+
+    const card = document.createElement('div');
+    card.className = 'track-card';
+    card.id = `card-${i}`;
+    if (t.disabled) card.classList.add('disabled');
+
+    card.innerHTML = `
+      <div class="track-label">
+        <div class="track-top-row">
+          <span class="track-number">${String(i+1).padStart(2,'0')}</span>
+          <span class="card-cache-dot" id="cdot-${i}" title="Audio cache status"></span>
+        </div>
+        <div class="track-name">${t.name}</div>
+        <label class="loop-toggle" title="Loop playback">
+          <input type="checkbox" id="loop-${i}" checked onchange="handleLoop(${i}, this)">
+          <span class="loop-box">
+            <svg viewBox="0 0 12 12"><polyline points="2,8 2,4 8,4"/><polyline points="10,4 10,8 4,8"/><polyline points="1,5 2,4 3,5"/><polyline points="9,7 10,8 11,7"/></svg>
+          </span>
+          <span class="loop-text" id="loop-text-${i}">Loop</span>
+        </label>
+      </div>
+      <div class="track-description">${t.description}</div>
+      <div class="gain-wrap">
+        <div class="gain-row">
+          <span class="gain-label">Gain</span>
+          <span class="gain-value" id="gain-val-${i}">75%</span>
+        </div>
+        <input
+          type="range"
+          class="gain-slider"
+          id="gain-${i}"
+          min="0" max="100" value="75" step="1"
+          oninput="handleGain(${i}, this)"
+          title="Track gain"
+        >
+        <div class="track-vu" style="color:${vuColor}; opacity:0" id="vu-${i}">
+          <div class="vu-bar"></div>
+          <div class="vu-bar"></div>
+          <div class="vu-bar"></div>
+        </div>
+      </div>
+      <div class="pads-wrap">
+        <button
+          class="pad pad-play"
+          id="pad-play-${i}"
+          style="background:${playBg}; --pad-glow:${hsl(c.h, c.s, c.l, 0.9)}"
+          onclick="handlePlay(${i})"
+          title="Fade IN — ${CONFIG.fadeInDuration}s">
+          <span class="pad-icon">▶</span>
+          <span class="pad-label">Fade In</span>
+          <div class="fade-badge">FADING</div>
+          <div class="pad-progress"><div class="pad-progress-fill" id="prog-play-${i}" style="width:0%"></div></div>
+        </button>
+        <div class="pad-divider"></div>
+        <button
+          class="pad pad-stop"
+          id="pad-stop-${i}"
+          style="background:${stopBg}; --pad-glow:${hsl(c.h, c.s, c.l, 0.4)}"
+          onclick="handleStop(${i})"
+          title="Fade OUT — ${CONFIG.fadeOutDuration}s">
+          <span class="pad-icon">■</span>
+          <span class="pad-label">Fade Out</span>
+          <div class="fade-badge">FADING</div>
+        </button>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+
+  // Fade timing display in footer
+  document.getElementById('fadeTimings').textContent =
+    `Fade in: ${CONFIG.fadeInDuration}s  ·  Fade out: ${CONFIG.fadeOutDuration}s`;
+}
+
+// ─────────────────────────────────────────────
+//  UI helpers
+// ─────────────────────────────────────────────
+function updateCardState(i, playing) {
+  const card = document.getElementById(`card-${i}`);
+  const playPad = document.getElementById(`pad-play-${i}`);
+  const vu = document.getElementById(`vu-${i}`);
+  if (card) card.classList.toggle('playing', playing);
+  if (playPad) playPad.classList.toggle('active', playing);
+  if (vu) vu.style.opacity = playing ? '1' : '0';
+  updateActiveCount();
+}
+
+function setPadActive(i, type, active) {
+  const pad = document.getElementById(`pad-${type}-${i}`);
+  if (pad) pad.classList.toggle('active', active);
+}
+
+function setFadeBadge(i, direction) {
+  ['play','stop'].forEach(type => {
+    const pad = document.getElementById(`pad-${type}-${i}`);
+    if (!pad) return;
+    pad.classList.toggle('fading', direction !== null);
+    const badge = pad.querySelector('.fade-badge');
+    if (badge) badge.textContent = direction === 'in' ? 'FADING IN' : direction === 'out' ? 'FADING OUT' : '';
+  });
+}
+
+function updatePadProgress(i, vol, type) {
+  const el = document.getElementById(`prog-play-${i}`);
+  if (el) el.style.width = (vol * 100) + '%';
+}
+
+function updateActiveCount() {
+  const count = tracks.filter(t => t.isPlaying).length;
+  document.getElementById('activeCount').textContent =
+    count === 0 ? '0 playing' : `${count} playing`;
+}
+
+// Pad press animation
+function pressPad(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('pressed');
+  setTimeout(() => el.classList.remove('pressed'), 120);
+}
+
+// ─────────────────────────────────────────────
+//  Actions
+// ─────────────────────────────────────────────
+function handleGain(i, slider) {
+  const val = parseInt(slider.value);
+  tracks[i].setGain(val / 100);
+  const label = document.getElementById(`gain-val-${i}`);
+  if (label) label.textContent = val + '%';
+  updateGainSliderFill(slider);
+}
+
+function updateGainSliderFill(slider) {
+  const pct = ((slider.value - slider.min) / (slider.max - slider.min)) * 100;
+  slider.style.setProperty('--fill', pct + '%');
+}
+
+// Init all sliders on load
+function initGainSliders() {
+  document.querySelectorAll('.gain-slider').forEach(s => updateGainSliderFill(s));
+}
+
+function handleLoop(i, checkbox) {
+  tracks[i].setLoop(checkbox.checked);
+  const label = document.getElementById(`loop-text-${i}`);
+  if (label) label.textContent = checkbox.checked ? 'Loop' : 'Once';
+  showToast(checkbox.checked
+    ? `↺ ${CONFIG.tracks[i].name} — looping on`
+    : `→ ${CONFIG.tracks[i].name} — plays once`);
+}
+
+function handlePlay(i) {
+  pressPad(`pad-play-${i}`);
+  tracks[i].fadeIn();
+  if (!CONFIG.tracks[i].url) {
+    showToast(`▶ ${CONFIG.tracks[i].name} — fading in (demo)`);
+    // Simulate volume animation in demo mode
+    simulateDemoPlay(i);
+  }
+}
+
+function handleStop(i) {
+  pressPad(`pad-stop-${i}`);
+  tracks[i].fadeOut();
+  if (!CONFIG.tracks[i].url) {
+    showToast(`■ ${CONFIG.tracks[i].name} — fading out (demo)`);
+  }
+}
+
+function panicStop() {
+  const btn = document.getElementById('panicBtn');
+  btn.classList.add('firing');
+  setTimeout(() => btn.classList.remove('firing'), 500);
+
+  tracks.forEach((t, i) => t.stop());
+  // Reset all progress bars
+  document.querySelectorAll('.pad-progress-fill').forEach(el => el.style.width = '0%');
+  updateActiveCount();
+  showToast('⬛ PANIC — all tracks stopped');
+}
+
+// Demo mode simulation (no real audio file)
+function simulateDemoPlay(i) {
+  const track = tracks[i];
+  // Fake the visual state since there's no real audio
+  updateCardState(i, true);
+  setFadeBadge(i, 'in');
+  let v = 0;
+  const steps = CONFIG.fadeInDuration * 1000 / CONFIG.fadeStep;
+  const delta = 1 / steps;
+  const timer = setInterval(() => {
+    if (!track.isPlaying) { clearInterval(timer); return; }
+    v = Math.min(1, v + delta);
+    updatePadProgress(i, v, 'play');
+    if (v >= 1) {
+      clearInterval(timer);
+      setFadeBadge(i, null);
+    }
+  }, CONFIG.fadeStep);
+}
+
+// Toast
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ─────────────────────────────────────────────
+//  Preloader — fetch all audio into Blob URLs
+//  so playback is 100% offline after load
+// ─────────────────────────────────────────────
+const tracksWithUrl = CONFIG.tracks.map((t,i) => ({...t, _index: i})).filter(t => t.url);
+
+function buildPreloaderRows() {
+  const container = document.getElementById('preloaderTracks');
+  CONFIG.tracks.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'preload-row';
+    row.innerHTML = `
+      <span class="preload-name">${t.name}</span>
+      <div class="preload-bar-wrap"><div class="preload-bar-fill" id="pbar-${i}"></div></div>
+      <span class="preload-status" id="pstat-${i}">${t.url ? '…' : '—'}</span>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// Detect local file:// vs http(s):// — determines loading strategy
+const IS_LOCAL = location.protocol === 'file:';
+
+async function preloadAllTracks() {
+  buildPreloaderRows();
+
+  const realTracks = tracksWithUrl;
+
+  // Demo mode — no URLs configured at all
+  if (realTracks.length === 0) {
+    document.getElementById('preloaderMsg').textContent = 'Demo mode — no audio files configured';
+    CONFIG.tracks.forEach((_, i) => {
+      document.getElementById('pbar-' + i).style.width = '100%';
+      const s = document.getElementById('pstat-' + i);
+      s.textContent = '–'; s.className = 'preload-status skip';
+    });
+    showEnterButton('demo');
+    return;
+  }
+
+  if (IS_LOCAL) {
+    document.getElementById('preloaderMsg').textContent = 'Local mode — buffering audio files…';
+  }
+
+  let completed = 0;
+  let errors = 0;
+
+  const loader = IS_LOCAL ? localAudioLoad : fetchAndCache;
+
+  const promises = realTracks.map(t => loader(t._index, t.url,
+    () => {   // onDone
+      completed++;
+      const pct = Math.round((completed / realTracks.length) * 100);
+      document.getElementById('overallFill').style.width = pct + '%';
+      document.getElementById('preloaderMsg').textContent = IS_LOCAL
+        ? `Buffered ${completed} of ${realTracks.length} tracks (local mode)`
+        : `Loading ${completed} of ${realTracks.length} tracks…`;
+    },
+    () => { errors++; }   // onError
+  ));
+
+  await Promise.allSettled(promises);
+
+  const allOk = errors === 0;
+  document.getElementById('overallFill').style.width = '100%';
+  document.getElementById('preloaderMsg').textContent = allOk
+    ? (IS_LOCAL
+        ? `All ${realTracks.length} tracks ready (local files)`
+        : `All ${realTracks.length} tracks cached — safe to go offline`)
+    : `${realTracks.length - errors} of ${realTracks.length} tracks loaded (${errors} failed)`;
+
+  showEnterButton(allOk ? 'all' : 'partial');
+  updateCachePill(realTracks.length, errors);
+}
+
+// ── Strategy A: fetch() + Blob URL (HTTP/HTTPS only) ──────────────────────
+// Downloads entire file into RAM as a Blob so internet can disappear after load.
+async function fetchAndCache(i, url, onDone, onError) {
+  const bar  = document.getElementById('pbar-' + i);
+  const stat = document.getElementById('pstat-' + i);
+  const cdot = document.getElementById('cdot-' + i);
+  if (cdot) cdot.className = 'card-cache-dot loading';
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const contentLength = res.headers.get('Content-Length');
+    const total = contentLength ? parseInt(contentLength) : null;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) {
+        const pct = Math.min(99, Math.round((received / total) * 100));
+        bar.style.width = pct + '%';
+        stat.textContent = pct + '%';
+      } else {
+        bar.style.width = '60%';
+        stat.textContent = '…';
+      }
+    }
+
+    const blob    = new Blob(chunks, { type: 'audio/mpeg' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    attachAudio(i, blobUrl);
+
+    bar.style.width = '100%';
+    stat.textContent = '✓'; stat.className = 'preload-status done';
+    if (cdot) cdot.className = 'card-cache-dot cached';
+    onDone();
+  } catch (err) {
+    console.warn('Fetch preload failed for track', i, err);
+    markError(i);
+    onError();
+  }
+}
+
+// ── Strategy B: Audio element + canplaythrough (file:// safe) ─────────────
+// Browser reads the local file directly — no fetch(), no CORS.
+// canplaythrough fires when the browser has buffered enough to play without
+// interruption. On local disk this typically means the whole file is ready.
+function localAudioLoad(i, url, onDone, onError) {
+  const bar  = document.getElementById('pbar-' + i);
+  const stat = document.getElementById('pstat-' + i);
+  const cdot = document.getElementById('cdot-' + i);
+  if (cdot) cdot.className = 'card-cache-dot loading';
+
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    audio.preload = 'auto';
+
+    // Show buffering progress via timeupdate / progress events
+    audio.addEventListener('progress', () => {
+      if (audio.buffered.length && audio.duration) {
+        const pct = Math.min(99, Math.round((audio.buffered.end(audio.buffered.length - 1) / audio.duration) * 100));
+        bar.style.width = pct + '%';
+        stat.textContent = pct + '%';
+      } else {
+        bar.style.width = '50%';
+        stat.textContent = '…';
+      }
+    });
+
+    audio.addEventListener('canplaythrough', () => {
+      attachAudio(i, null, audio);   // reuse this element
+      bar.style.width = '100%';
+      stat.textContent = '✓'; stat.className = 'preload-status done';
+      if (cdot) cdot.className = 'card-cache-dot cached';
+      onDone();
+      resolve();
+    }, { once: true });
+
+    audio.addEventListener('error', () => {
+      console.warn('Local load failed for track', i, audio.error);
+      markError(i);
+      onError();
+      resolve();
+    }, { once: true });
+
+    // Timeout fallback — some browsers never fire canplaythrough for certain codecs
+    const timeout = setTimeout(() => {
+      if (audio.readyState >= 3) {   // HAVE_FUTURE_DATA — good enough
+        attachAudio(i, null, audio);
+        bar.style.width = '100%';
+        stat.textContent = '✓'; stat.className = 'preload-status done';
+        if (cdot) cdot.className = 'card-cache-dot cached';
+        onDone();
+      } else {
+        markError(i);
+        onError();
+      }
+      resolve();
+    }, 15000);
+
+    audio.addEventListener('canplaythrough', () => clearTimeout(timeout), { once: true });
+    audio.src = url;
+    audio.load();
+  });
+}
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
+function attachAudio(i, src, existingAudio) {
+  if (existingAudio) {
+    // Reuse the already-loaded Audio element
+    existingAudio.loop   = tracks[i].loop;
+    existingAudio.volume = 0;
+    tracks[i].audio = existingAudio;
+  } else {
+    if (tracks[i].audio) {
+      tracks[i].audio.src = src;
+      tracks[i].audio.load();
+    } else {
+      tracks[i].audio = new Audio(src);
+      tracks[i].audio.loop   = tracks[i].loop;
+      tracks[i].audio.volume = 0;
+    }
+  }
+  // Re-attach ended listener (needed when audio element is replaced)
+  tracks[i].audio.addEventListener('ended', () => {
+    if (!tracks[i].loop) {
+      clearInterval(tracks[i].fadeTimer);
+      tracks[i].fadePct   = 0;
+      tracks[i].isPlaying = false;
+      tracks[i].isFading  = false;
+      updateCardState(i, false);
+      setPadActive(i, 'play', false);
+      setPadActive(i, 'stop', false);
+      setFadeBadge(i, null);
+      updatePadProgress(i, 0, 'play');
+    }
+  });
+}
+
+function markError(i) {
+  const bar  = document.getElementById('pbar-' + i);
+  const stat = document.getElementById('pstat-' + i);
+  const cdot = document.getElementById('cdot-' + i);
+  if (bar)  { bar.style.width = '100%'; bar.style.background = 'rgba(255,59,92,0.5)'; }
+  if (stat) { stat.textContent = '✗'; stat.className = 'preload-status error'; }
+  if (cdot) cdot.className = 'card-cache-dot error';
+}
+
+function showEnterButton(state) {
+  const btn = document.getElementById('enterBtn');
+  btn.style.display = 'block';
+  if (state === 'demo')    btn.textContent = 'Continue (Demo) →';
+  else if (state === 'partial') btn.textContent = 'Continue Anyway →';
+  else                          btn.textContent = 'All Loaded — Enter →';
+}
+
+function updateCachePill(total, errors) {
+  const pill = document.getElementById('cachePill');
+  const text = document.getElementById('cachePillText');
+  if (errors === 0) {
+    pill.className = 'cache-pill cached';
+    text.textContent = `${total} tracks cached`;
+  } else if (errors < total) {
+    pill.className = 'cache-pill partial';
+    text.textContent = `${total - errors}/${total} cached`;
+  } else {
+    pill.className = 'cache-pill demo';
+    text.textContent = 'Load failed';
+  }
+}
+
+function enterApp() {
+  const overlay = document.getElementById('preloader');
+  overlay.classList.add('hiding');
+  setTimeout(() => overlay.remove(), 600);
+}
+
+// ─────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────
+buildUI();
+updateActiveCount();
+initGainSliders();
+// Set subtitle based on runtime environment
+document.getElementById('preloaderSub').textContent = IS_LOCAL
+  ? 'Local mode — buffering files via Audio API…'
+  : 'Online mode — downloading files into memory…';
+preloadAllTracks();
+</script>
+</body>
+</html>
